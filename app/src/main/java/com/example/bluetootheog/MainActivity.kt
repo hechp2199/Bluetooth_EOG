@@ -3,7 +3,11 @@ package com.example.bluetootheog
 import android.Manifest
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
-import android.bluetooth.BluetoothSocket
+import android.bluetooth.BluetoothGatt
+import android.bluetooth.BluetoothGattCallback
+import android.bluetooth.BluetoothProfile
+import android.bluetooth.le.ScanCallback
+import android.bluetooth.le.ScanResult
 import android.content.pm.PackageManager
 import android.os.Bundle
 import android.util.Log
@@ -35,6 +39,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.example.bluetootheog.ui.theme.BluetoothEOGTheme
+
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -76,78 +81,262 @@ class MainActivity : ComponentActivity() {
     }
 
     private var bluetoothAdapter: BluetoothAdapter? = null
-    private var bluetoothSocket: BluetoothSocket? = null
+    //private var bluetoothSocket: BluetoothSocket? = null
 
-    private fun initializeBluetooth() {
+//    private fun initializeBluetooth() {
+//        bluetoothAdapter = BluetoothAdapter.getDefaultAdapter()
+//        if (bluetoothAdapter == null) {
+//            Log.e("BluetoothEOG", "Bluetooth not supported on this device.")
+//            Toast.makeText(this, "Bluetooth not supported on this device.", Toast.LENGTH_SHORT)
+//                .show()
+//            return
+//        }
+//
+//        if (!bluetoothAdapter!!.isEnabled) {
+//            Log.e("BluetoothEOG", "Bluetooth is disabled. Please enable it.")
+//            Toast.makeText(this, "Bluetooth is disabled. Please enable it.", Toast.LENGTH_SHORT)
+//                .show()
+//        } else {
+//            Log.d("BluetoothEOG", "Bluetooth is ON.")
+//        }
+//    }
+
+    fun connectToBleDevice() {
         bluetoothAdapter = BluetoothAdapter.getDefaultAdapter()
         if (bluetoothAdapter == null) {
-            Log.e("BluetoothEOG", "Bluetooth not supported on this device.")
-            Toast.makeText(this, "Bluetooth not supported on this device.", Toast.LENGTH_SHORT)
-                .show()
+            Toast.makeText(this, "Bluetooth not supported", Toast.LENGTH_SHORT).show()
             return
         }
 
         if (!bluetoothAdapter!!.isEnabled) {
-            Log.e("BluetoothEOG", "Bluetooth is disabled. Please enable it.")
-            Toast.makeText(this, "Bluetooth is disabled. Please enable it.", Toast.LENGTH_SHORT)
-                .show()
-        } else {
-            Log.d("BluetoothEOG", "Bluetooth is ON.")
+            Toast.makeText(this, "Please enable Bluetooth", Toast.LENGTH_SHORT).show()
+            return
         }
+
+        // ✅ Permission check
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_SCAN)
+            != PackageManager.PERMISSION_GRANTED
+        ) {
+
+            ActivityCompat.requestPermissions(
+                this,
+                arrayOf(Manifest.permission.BLUETOOTH_SCAN),
+                1001
+            )
+            return
+        }
+
+        if (ActivityCompat.checkSelfPermission(
+                this,
+                Manifest.permission.ACCESS_FINE_LOCATION
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
+            ActivityCompat.requestPermissions(
+                this,
+                arrayOf(Manifest.permission.ACCESS_FINE_LOCATION),
+                2001
+            )
+            return
+        }
+
+
+        val scanner = bluetoothAdapter!!.bluetoothLeScanner ?: run {
+            Toast.makeText(this, "BLE Scanner not available", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        Toast.makeText(this, "Scanning for BLE devices...", Toast.LENGTH_SHORT).show()
+
+//        val scanCallback = object : ScanCallback() {
+//            override fun onScanResult(callbackType: Int, result: ScanResult?) {
+//                result?.let {
+//                    val device = it.device
+//
+//                    // ✅ Ensure permission before accessing device.name
+//                    if (ActivityCompat.checkSelfPermission(
+//                            this@MainActivity,
+//                            Manifest.permission.BLUETOOTH_SCAN
+//                        ) != PackageManager.PERMISSION_GRANTED
+//                    ) {
+//                        ActivityCompat.requestPermissions(
+//                            this@MainActivity,
+//                            arrayOf(Manifest.permission.BLUETOOTH_SCAN),
+//                            1001
+//                        )
+//                        return
+//                    }
+//                    Log.d("SCAN", "Device found: name=${device.name}, address=${device.address}")
+//
+////                    if (device.name != null && device.name.contains("HC", ignoreCase = true)) {
+////                        Toast.makeText(
+////                            this@MainActivity,
+////                            "Found ${device.name}, connecting...",
+////                            Toast.LENGTH_SHORT
+////                        ).show()
+////
+////                        // ✅ Ensure permission before stopScan
+////                        if (ActivityCompat.checkSelfPermission(
+////                                this@MainActivity,
+////                                Manifest.permission.BLUETOOTH_SCAN
+////                            ) == PackageManager.PERMISSION_GRANTED
+////                        ) {
+////                            scanner.stopScan(this)
+////                        }
+////
+////                        connectGattDevice(device)
+////                    }
+//                }
+//            }
+//        }
+
+        val scanCallback = object : ScanCallback() {
+            override fun onScanResult(callbackType: Int, result: ScanResult) {
+                val device = result.device
+
+                // ✅ Permission check before accessing name/address
+                if (ActivityCompat.checkSelfPermission(
+                        this@MainActivity,
+                        Manifest.permission.BLUETOOTH_SCAN
+                    ) != PackageManager.PERMISSION_GRANTED
+                ) return
+
+                Log.d("SCAN", "Device found: name=${device.name}, address=${device.address}")
+
+                Toast.makeText(
+                    this@MainActivity,
+                    "Found ${device.address}",
+                    Toast.LENGTH_SHORT
+                ).show()
+
+                // For now, do NOT auto-connect — just list devices
+            }
+        }
+
+
+
+        scanner.startScan(scanCallback)
     }
 
-    fun connectToHC05() {
+    private fun connectGattDevice(device: BluetoothDevice) {
+        // ✅ Permission check
         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT)
             != PackageManager.PERMISSION_GRANTED
         ) {
-            Log.e("BluetoothEOG", "Permission not granted for Bluetooth connect.")
-            Toast.makeText(
+
+            ActivityCompat.requestPermissions(
                 this,
-                "Permission not granted for Bluetooth connect.",
-                Toast.LENGTH_SHORT
-            ).show()
+                arrayOf(Manifest.permission.BLUETOOTH_CONNECT),
+                1002
+            )
             return
         }
 
-        val deviceName = "HC-05" // your module’s Bluetooth name
-        val pairedDevices: Set<BluetoothDevice>? = bluetoothAdapter?.bondedDevices
-        if (pairedDevices.isNullOrEmpty()) {
-            Toast.makeText(this, "No paired devices found", Toast.LENGTH_LONG).show()
-            return
+        Toast.makeText(this, "Connecting to ${device.name}...", Toast.LENGTH_SHORT).show()
+
+        device.connectGatt(this, false, gattCallback)
+    }
+
+    private val gattCallback = object : BluetoothGattCallback() {
+        override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
+            if (newState == BluetoothProfile.STATE_CONNECTED) {
+                runOnUiThread {
+                    Toast.makeText(this@MainActivity, "✅ BLE connected!", Toast.LENGTH_SHORT).show()
+                }
+                if (ActivityCompat.checkSelfPermission(
+                        this@MainActivity,
+                        Manifest.permission.BLUETOOTH_CONNECT
+                    ) == PackageManager.PERMISSION_GRANTED
+                ) {
+                    gatt.discoverServices()
+                } else {
+                    ActivityCompat.requestPermissions(
+                        this@MainActivity,
+                        arrayOf(Manifest.permission.BLUETOOTH_CONNECT),
+                        1002
+                    )
+                    return
+                }
+
+            } else {
+                runOnUiThread {
+                    Toast.makeText(this@MainActivity, "❌ BLE disconnected", Toast.LENGTH_SHORT)
+                        .show()
+                }
+            }
         }
 
-        // 🔹 Display all paired devices in Toast + Logcat
-        val deviceList = pairedDevices.joinToString("\n") { "${it.name} (${it.address})" }
-        Log.d("BluetoothEOG", "Paired devices:\n$deviceList")
-        Toast.makeText(this, "Paired devices:\n$deviceList", Toast.LENGTH_LONG).show()
+        override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
+            for (service in gatt.services) {
+                Log.d("BLE", "Service: ${service.uuid}")
+                for (char in service.characteristics) {
+                    Log.d("BLE", "Characteristic: ${char.uuid}")
+                }
+            }
 
-        val hc05Device = pairedDevices.find { it.name.equals(deviceName, ignoreCase = true) }
-        if (hc05Device == null) {
-            Log.e("BluetoothEOG", "HC-05 device not found. Pair it first.")
-            Toast.makeText(this, "HC-05 device not found. Pair it first.", Toast.LENGTH_SHORT)
-                .show()
-            return
-        }
-
-        // Standard SPP UUID for serial devices
-        val uuid = java.util.UUID.fromString("00001101-0000-1000-8000-00805F9B34FB")
-
-        try {
-            bluetoothSocket = hc05Device.createRfcommSocketToServiceRecord(uuid)
-            bluetoothSocket?.connect()
-            Log.i("BluetoothEOG", "Connected to HC-05!")
-            Toast.makeText(this, "Connected to HC-05!", Toast.LENGTH_SHORT).show()
-        } catch (e: Exception) {
-            Log.e("BluetoothEOG", "Connection failed: ${e.message}")
-            Toast.makeText(this, "Connection failed!", Toast.LENGTH_SHORT).show()
-            try {
-                bluetoothSocket?.close()
-            } catch (closeException: Exception) {
-                Log.e("BluetoothEOG", "Error closing socket: ${closeException.message}")
-                Toast.makeText(this, "Error closing socket", Toast.LENGTH_SHORT).show()
+            runOnUiThread {
+                Toast.makeText(this@MainActivity, "✅ Services discovered", Toast.LENGTH_SHORT)
+                    .show()
             }
         }
     }
+
+
+//    fun connectToHC05() {
+//        initializeBluetooth()
+//
+//        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT)
+//            != PackageManager.PERMISSION_GRANTED
+//        ) {
+//            Toast.makeText(this, "Permission not granted for Bluetooth connect.", Toast.LENGTH_SHORT).show()
+//            return
+//        }
+//
+//        val deviceName = "HC-05"
+//        val pairedDevices: Set<BluetoothDevice>? = bluetoothAdapter?.bondedDevices
+//        if (pairedDevices.isNullOrEmpty()) {
+//            Toast.makeText(this, "No paired devices found", Toast.LENGTH_LONG).show()
+//            return
+//        }
+//
+//        val hc05Device = pairedDevices.find { it.name.equals(deviceName, ignoreCase = true) }
+//        if (hc05Device == null) {
+//            Toast.makeText(this, "HC-05 not found. Pair it first.", Toast.LENGTH_SHORT).show()
+//            return
+//        }
+//
+//        thread {
+//            try {
+//                runOnUiThread {
+//                    Toast.makeText(this, "Connecting to HC-05...", Toast.LENGTH_SHORT).show()
+//                }
+//
+//                // Try normal SPP UUID first
+//                val uuid = java.util.UUID.fromString("00001101-0000-1000-8000-00805F9B34FB")
+//                var socket = hc05Device.createInsecureRfcommSocketToServiceRecord(uuid)
+//
+//                try {
+//                    bluetoothAdapter?.cancelDiscovery()
+//                    socket.connect()
+//                } catch (e: Exception) {
+//                    // Fallback using reflection (some clones need this)
+//                    Log.e("BluetoothEOG", "Standard connect failed, retrying via reflection...")
+//                    val method = hc05Device.javaClass.getMethod("createRfcommSocket", Int::class.javaPrimitiveType)
+//                    socket = method.invoke(hc05Device, 1) as BluetoothSocket
+//                    socket.connect()
+//                }
+//
+//                bluetoothSocket = socket
+//                runOnUiThread {
+//                    Toast.makeText(this, "✅ Connected to HC-05!", Toast.LENGTH_SHORT).show()
+//                }
+//            } catch (e: Exception) {
+//                Log.e("BluetoothEOG", "Connection failed: ${e.message}")
+//                runOnUiThread {
+//                    Toast.makeText(this, "Connection failed: ${e.message}", Toast.LENGTH_LONG).show()
+//                }
+//            }
+//        }
+//    }
 
 
 }
@@ -185,7 +374,7 @@ fun EOGApp(name: String, modifier: Modifier = Modifier) {
             ExtendedFloatingActionButton(
                 onClick = {
                     val activity = context as? MainActivity
-                    activity?.connectToHC05()
+                    activity?.connectToBleDevice()
                 },
                 icon = { Icon(Icons.Filled.Add, "Connect Bluetooth Button") },
                 text = { Text(text = "Connect") },
