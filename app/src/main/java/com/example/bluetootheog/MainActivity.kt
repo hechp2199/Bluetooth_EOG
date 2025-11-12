@@ -27,6 +27,8 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults.topAppBarColors
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
@@ -35,6 +37,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.example.bluetootheog.ui.theme.BluetoothEOGTheme
+import java.io.InputStream
 import kotlin.concurrent.thread
 
 
@@ -46,16 +49,18 @@ class MainActivity : ComponentActivity() {
         setContent {
             BluetoothEOGTheme {
                 EOGApp(
-                    name = "Android",
-                    modifier = Modifier
+                    name = "Android", modifier = Modifier
                 )
             }
         }
     }
 
+    private var inputStream: InputStream? = null
+    var onDataReceived: ((Float) -> Unit)? = null
+    private var isReading = false
+
     private val bluetoothPermissions = arrayOf(
-        Manifest.permission.BLUETOOTH_CONNECT,
-        Manifest.permission.BLUETOOTH_SCAN
+        Manifest.permission.BLUETOOTH_CONNECT, Manifest.permission.BLUETOOTH_SCAN
     )
 
     private val REQUEST_BLUETOOTH_PERMISSIONS = 1
@@ -67,9 +72,7 @@ class MainActivity : ComponentActivity() {
 
         if (missingPermissions.isNotEmpty()) {
             ActivityCompat.requestPermissions(
-                this,
-                missingPermissions.toTypedArray(),
-                REQUEST_BLUETOOTH_PERMISSIONS
+                this, missingPermissions.toTypedArray(), REQUEST_BLUETOOTH_PERMISSIONS
             )
         } else {
             Log.d("BluetoothEOG", "All Bluetooth permissions granted.")
@@ -102,13 +105,12 @@ class MainActivity : ComponentActivity() {
     fun connectToHC05() {
         initializeBluetooth()
 
-        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT)
-            != PackageManager.PERMISSION_GRANTED
+        if (ActivityCompat.checkSelfPermission(
+                this, Manifest.permission.BLUETOOTH_CONNECT
+            ) != PackageManager.PERMISSION_GRANTED
         ) {
             Toast.makeText(
-                this,
-                "Permission not granted for Bluetooth connect.",
-                Toast.LENGTH_SHORT
+                this, "Permission not granted for Bluetooth connect.", Toast.LENGTH_SHORT
             ).show()
             return
         }
@@ -143,8 +145,7 @@ class MainActivity : ComponentActivity() {
                     // Fallback using reflection (some clones need this)
                     Log.e("BluetoothEOG", "Standard connect failed, retrying via reflection...")
                     val method = hc05Device.javaClass.getMethod(
-                        "createRfcommSocket",
-                        Int::class.javaPrimitiveType
+                        "createRfcommSocket", Int::class.javaPrimitiveType
                     )
                     socket = method.invoke(hc05Device, 1) as BluetoothSocket
                     socket.connect()
@@ -154,6 +155,7 @@ class MainActivity : ComponentActivity() {
                 runOnUiThread {
                     Toast.makeText(this, "✅ Connected to HC-05!", Toast.LENGTH_SHORT).show()
                 }
+                startReading()
             } catch (e: Exception) {
                 Log.e("BluetoothEOG", "Connection failed: ${e.message}")
                 runOnUiThread {
@@ -164,64 +166,93 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    fun startReading() {
+        val socket = bluetoothSocket ?: return
+        inputStream = socket.inputStream
+        isReading = true
+
+        thread {
+            val buffer = ByteArray(1024)
+            var raw = ""
+
+            while (isReading) {
+                try {
+                    val bytes = inputStream!!.read(buffer)
+                    raw += String(buffer, 0, bytes)
+
+                    val lines = raw.split("\n")
+                    raw = lines.last()
+
+                    for (line in lines.dropLast(1)) {
+                        line.trim().toFloatOrNull()?.let { value ->
+                            onDataReceived?.invoke(value)
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.e("BluetoothEOG", "Read error: ${e.message}")
+                    isReading = false
+                }
+            }
+        }
+    }
 
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun EOGApp(name: String, modifier: Modifier = Modifier) {
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                colors = topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer,
-                    titleContentColor = MaterialTheme.colorScheme.primary,
-                ),
-                title = {
-                    Text("Bluetooth EOG")
-                }
-            )
-        },
-        bottomBar = {
-            BottomAppBar(
+
+    val context = LocalContext.current
+    val activity = context as? MainActivity
+
+    val eogValues = remember { mutableStateListOf<Float>() }
+
+// assign callback to collect data
+    activity?.onDataReceived = { value ->
+        eogValues.add(value)
+        if (eogValues.size > 300) { // keep last ~3 seconds @100Hz
+            eogValues.removeAt(0)
+        }
+    }
+
+
+    Scaffold(topBar = {
+        TopAppBar(
+            colors = topAppBarColors(
                 containerColor = MaterialTheme.colorScheme.primaryContainer,
-                contentColor = MaterialTheme.colorScheme.primary,
-            ) {
-                Text(
-                    modifier = Modifier
-                        .fillMaxWidth(),
-                    textAlign = TextAlign.Center,
-                    text = "Neural Engineering Lab | IITG",
-                )
-            }
-        },
-        floatingActionButton = {
-            val context = LocalContext.current
-            ExtendedFloatingActionButton(
-                onClick = {
-                    val activity = context as? MainActivity
-                    activity?.connectToHC05()
-                },
-                icon = { Icon(Icons.Filled.Add, "Connect Bluetooth Button") },
-                text = { Text(text = "Connect") },
+                titleContentColor = MaterialTheme.colorScheme.primary,
+            ), title = {
+                Text("Bluetooth EOG")
+            })
+    }, bottomBar = {
+        BottomAppBar(
+            containerColor = MaterialTheme.colorScheme.primaryContainer,
+            contentColor = MaterialTheme.colorScheme.primary,
+        ) {
+            Text(
+                modifier = Modifier.fillMaxWidth(),
+                textAlign = TextAlign.Center,
+                text = "Neural Engineering Lab | IITG",
             )
         }
-    ) { innerPadding ->
+    }, floatingActionButton = {
+        val context = LocalContext.current
+        ExtendedFloatingActionButton(
+            onClick = {
+                val activity = context as? MainActivity
+                activity?.connectToHC05()
+            },
+            icon = { Icon(Icons.Filled.Add, "Connect Bluetooth Button") },
+            text = { Text(text = "Connect") },
+        )
+    }) { innerPadding ->
         Column(
-            modifier = Modifier
-                .padding(innerPadding),
+            modifier = Modifier.padding(innerPadding),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             Text(
-                modifier = Modifier.padding(8.dp),
-                text =
-                    """
-                    This is an example of a scaffold. It uses the Scaffold composable's parameters to create a screen with a simple top app bar, bottom app bar, and floating action button.
-
-                    It also contains some basic inner content, such as this text.
-
-                    You have pressed the floating action button times.
-                """.trimIndent(),
+                text = if (eogValues.isNotEmpty()) "EOG: ${eogValues.last()}" else "Waiting...",
+                modifier = Modifier.padding(8.dp)
             )
         }
     }
