@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.BottomAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
@@ -28,6 +29,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults.topAppBarColors
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -55,16 +57,23 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    // Variable declaration
     private var inputStream: InputStream? = null
     var onDataReceived: ((Float) -> Unit)? = null
+    var onConnectionChanged: ((Boolean) -> Unit)? = null
     private var isReading = false
+    private val REQUEST_BLUETOOTH_PERMISSIONS = 1
+    private var bluetoothAdapter: BluetoothAdapter? = null
+    private var bluetoothSocket: BluetoothSocket? = null
+    var isConnected = false
+        private set
 
+    // Bluetooth permission object
     private val bluetoothPermissions = arrayOf(
         Manifest.permission.BLUETOOTH_CONNECT, Manifest.permission.BLUETOOTH_SCAN
     )
 
-    private val REQUEST_BLUETOOTH_PERMISSIONS = 1
-
+    // Function to check whether bluetooth permission is granted
     private fun checkBluetoothPermissions() {
         val missingPermissions = bluetoothPermissions.filter {
             ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
@@ -80,9 +89,8 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private var bluetoothAdapter: BluetoothAdapter? = null
-    private var bluetoothSocket: BluetoothSocket? = null
-
+    // Function to initialize Bluetooth Adapter object
+    // Checks whether bluetooth is supported and enabled
     private fun initializeBluetooth() {
         bluetoothAdapter = BluetoothAdapter.getDefaultAdapter()
         if (bluetoothAdapter == null) {
@@ -103,6 +111,12 @@ class MainActivity : ComponentActivity() {
 
 
     fun connectToHC05() {
+
+        if (isConnected) {
+            disconnectFromHC05()
+            return
+        }
+
         initializeBluetooth()
 
         if (ActivityCompat.checkSelfPermission(
@@ -153,7 +167,8 @@ class MainActivity : ComponentActivity() {
 
                 bluetoothSocket = socket
                 runOnUiThread {
-                    Toast.makeText(this, "✅ Connected to HC-05!", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this, "Connected to HC-05!", Toast.LENGTH_SHORT).show()
+                    onConnectionChanged?.invoke(true)
                 }
                 startReading()
             } catch (e: Exception) {
@@ -161,12 +176,33 @@ class MainActivity : ComponentActivity() {
                 runOnUiThread {
                     Toast.makeText(this, "Connection failed: ${e.message}", Toast.LENGTH_LONG)
                         .show()
+                    onConnectionChanged?.invoke(false)
                 }
             }
         }
     }
 
-    fun startReading() {
+    // Bluetooth disconnect function
+    fun disconnectFromHC05() {
+        thread {
+            try {
+                isReading = false
+                inputStream?.close()
+                bluetoothSocket?.close()
+                bluetoothSocket = null
+                isConnected = false
+
+                runOnUiThread {
+                    Toast.makeText(this, "Disconnected from HC-05", Toast.LENGTH_SHORT).show()
+                    onConnectionChanged?.invoke(false)
+                }
+            } catch (e: Exception) {
+                Log.e("BluetoothEOG", "Disconnection error: ${e.message}")
+            }
+        }
+    }
+
+    private fun startReading() {
         val socket = bluetoothSocket ?: return
         inputStream = socket.inputStream
         isReading = true
@@ -196,6 +232,10 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onDestroy() {
+        super.onDestroy()
+        disconnectFromHC05()
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -204,8 +244,8 @@ fun EOGApp(name: String, modifier: Modifier = Modifier) {
 
     val context = LocalContext.current
     val activity = context as? MainActivity
-
     val eogValues = remember { mutableStateListOf<Float>() }
+    val isConnected = remember { mutableStateOf(false) }
 
 // assign callback to collect data
     activity?.onDataReceived = { value ->
@@ -215,6 +255,10 @@ fun EOGApp(name: String, modifier: Modifier = Modifier) {
         }
     }
 
+    // Observe connection status
+    activity?.onConnectionChanged = { connected ->
+        isConnected.value = connected
+    }
 
     Scaffold(topBar = {
         TopAppBar(
@@ -239,11 +283,16 @@ fun EOGApp(name: String, modifier: Modifier = Modifier) {
         val context = LocalContext.current
         ExtendedFloatingActionButton(
             onClick = {
-                val activity = context as? MainActivity
-                activity?.connectToHC05()
+                if (isConnected.value) activity?.disconnectFromHC05()
+                else activity?.connectToHC05()
             },
-            icon = { Icon(Icons.Filled.Add, "Connect Bluetooth Button") },
-            text = { Text(text = "Connect") },
+            icon = {
+                Icon(
+                    if (isConnected.value) Icons.Filled.Close else Icons.Filled.Add,
+                    "Connect Bluetooth Button"
+                )
+            },
+            text = { Text(if (isConnected.value) "Disconnect" else "Connect") },
         )
     }) { innerPadding ->
         Column(
