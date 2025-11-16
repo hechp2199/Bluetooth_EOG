@@ -11,9 +11,11 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -28,10 +30,14 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults.topAppBarColors
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
@@ -39,6 +45,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.example.bluetootheog.ui.theme.BluetoothEOGTheme
+import kotlinx.coroutines.delay
 import java.io.InputStream
 import kotlin.concurrent.thread
 
@@ -50,9 +57,7 @@ class MainActivity : ComponentActivity() {
         checkBluetoothPermissions()
         setContent {
             BluetoothEOGTheme {
-                EOGApp(
-                    name = "Android", modifier = Modifier
-                )
+                EOGApp()
             }
         }
     }
@@ -148,7 +153,7 @@ class MainActivity : ComponentActivity() {
                     Toast.makeText(this, "Connecting to HC-05...", Toast.LENGTH_SHORT).show()
                 }
 
-                // Try normal SPP UUID first
+                // Trying normal SPP UUID first
                 val uuid = java.util.UUID.fromString("00001101-0000-1000-8000-00805F9B34FB")
                 var socket = hc05Device.createInsecureRfcommSocketToServiceRecord(uuid)
 
@@ -156,7 +161,7 @@ class MainActivity : ComponentActivity() {
                     bluetoothAdapter?.cancelDiscovery()
                     socket.connect()
                 } catch (e: Exception) {
-                    // Fallback using reflection (some clones need this)
+                    // Fallback using reflection- Manually connecting socket
                     Log.e("BluetoothEOG", "Standard connect failed, retrying via reflection...")
                     val method = hc05Device.javaClass.getMethod(
                         "createRfcommSocket", Int::class.javaPrimitiveType
@@ -240,12 +245,23 @@ class MainActivity : ComponentActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun EOGApp(name: String, modifier: Modifier = Modifier) {
+fun EOGApp() {
 
     val context = LocalContext.current
     val activity = context as? MainActivity
     val eogValues = remember { mutableStateListOf<Float>() }
     val isConnected = remember { mutableStateOf(false) }
+
+    val graphTick = remember { mutableStateOf(0) }
+
+    // Refresh compose every 16ms
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(16) // 60 FPS refresh
+            graphTick.value++ // Force redraw of compose
+        }
+    }
+
 
 // assign callback to collect data
     activity?.onDataReceived = { value ->
@@ -296,21 +312,112 @@ fun EOGApp(name: String, modifier: Modifier = Modifier) {
         )
     }) { innerPadding ->
         Column(
-            modifier = Modifier.padding(innerPadding),
+            modifier = Modifier
+                .padding(innerPadding)
+                .fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
+
+            // Live EOG text
             Text(
-                text = if (eogValues.isNotEmpty()) "EOG: ${eogValues.last()}" else "Waiting...",
+                text = if (eogValues.isNotEmpty()) "EOG: ${eogValues.last()}" else "Waiting for connection...",
                 modifier = Modifier.padding(8.dp)
+            )
+
+            // Live Graph
+            EOGGraph(
+                values = eogValues,
+                tick = graphTick.value,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(200.dp)
+                    .padding(8.dp)
             )
         }
     }
 }
 
+@Composable
+fun EOGGraph(values: List<Float>, tick: Int, modifier: Modifier = Modifier) {
+
+    val safeValues = values.toList() // Taking fresh snapshot of EOG values
+
+    Canvas(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(250.dp)
+    ) {
+
+        if (safeValues.size < 2) return@Canvas
+
+        val w = size.width
+        val h = size.height
+
+        // Scaling
+        val maxVal = safeValues.maxOrNull() ?: 1f
+        val minVal = safeValues.minOrNull() ?: -1f
+        val range = (maxVal - minVal).takeIf { it != 0f } ?: 1f
+
+        val xStep = w / (safeValues.size - 1)
+
+        // Adding grid lines to the graph
+        val gridColor = Color(0xFFCCCCCC)
+        val textColor = Color.White
+        val labelPaint = android.graphics.Paint().apply {
+            color = android.graphics.Color.WHITE
+            textSize = 32f
+        }
+
+        // Horizontal grid lines: 5 partitions
+        val rows = 5
+        for (i in 0..rows) {
+            val y = h * i / rows
+            drawLine(
+                start = Offset(0f, y), end = Offset(w, y), color = gridColor, strokeWidth = 1f
+            )
+
+            // Y-axis labels
+            val value = maxVal - (range / rows) * i
+            drawContext.canvas.nativeCanvas.drawText(
+                String.format("%.1f", value), 10f, y - 5f, labelPaint
+            )
+        }
+
+        // Vertical grid lines: 8 partitions
+        val cols = 8
+        for (i in 0..cols) {
+            val x = w * i / cols
+            drawLine(
+                start = Offset(x, 0f), end = Offset(x, h), color = gridColor, strokeWidth = 1f
+            )
+        }
+
+        // Drawing the signal line
+        var prevX = 0f
+        var prevY = h - ((safeValues[0] - minVal) / range) * h
+
+        for (i in 1 until safeValues.size) {
+            val x = i * xStep
+            val y = h - ((safeValues[i] - minVal) / range) * h
+
+            drawLine(
+                color = Color.Green,
+                start = Offset(prevX, prevY),
+                end = Offset(x, y),
+                strokeWidth = 3f
+            )
+
+            prevX = x
+            prevY = y
+        }
+    }
+}
+
+
 @Preview(showBackground = true)
 @Composable
 fun EOGAppPreview() {
     BluetoothEOGTheme {
-        EOGApp("Android")
+        EOGApp()
     }
 }
