@@ -13,7 +13,10 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -34,20 +37,24 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.example.bluetootheog.ui.theme.BluetoothEOGTheme
 import kotlinx.coroutines.delay
 import java.io.InputStream
 import kotlin.concurrent.thread
+import kotlin.math.roundToInt
 
 
 class MainActivity : ComponentActivity() {
@@ -320,22 +327,64 @@ fun EOGApp() {
 
             // Live EOG text
             Text(
-                text = if (eogValues.isNotEmpty()) "EOG: ${eogValues.last()}" else "Waiting for connection...",
+                text = if (eogValues.isNotEmpty()) "EOG (µV): ${eogValues.last()}" else "Waiting for connection...",
                 modifier = Modifier.padding(8.dp)
             )
 
             // Live Graph
-            EOGGraph(
+            LabeledGraph(
                 values = eogValues,
                 tick = graphTick.value,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(200.dp)
-                    .padding(8.dp)
+                    .padding(2.dp),
+                yLabel = "EOG (µV)",
+                isConnected = isConnected.value
             )
         }
     }
 }
+
+@Composable
+fun LabeledGraph(
+    values: List<Float>,
+    tick: Int,
+    modifier: Modifier = Modifier,
+    yLabel: String = "EOG (µV)",
+    isConnected: Boolean = false
+) {
+    Row(
+        modifier = modifier
+    ) {
+        if (isConnected) {
+            // Y-Axis Label
+            Box(
+                modifier = Modifier
+                    .padding(2.dp)
+                    .fillMaxHeight(),
+            ) {
+                Text(
+                    text = yLabel,
+                    modifier = Modifier
+                        .padding(2.dp)
+                        .align(Alignment.Center)
+                        .graphicsLayer(rotationZ = -90f),
+                    fontSize = 12.sp,
+                    maxLines = 1
+                )
+            }
+        }
+
+        // Graph
+        EOGGraph(
+            values = values,
+            tick = tick,
+            modifier = Modifier.weight(1f)
+        )
+    }
+}
+
 
 @Composable
 fun EOGGraph(values: List<Float>, tick: Int, modifier: Modifier = Modifier) {
@@ -379,7 +428,7 @@ fun EOGGraph(values: List<Float>, tick: Int, modifier: Modifier = Modifier) {
             // Y-axis labels
             val value = maxVal - (range / rows) * i
             drawContext.canvas.nativeCanvas.drawText(
-                String.format("%.1f", value), 10f, y - 5f, labelPaint
+                String.format("%.0f", (value / 10).roundToInt() * 10f), 10f, y - 5f, labelPaint
             )
         }
 
