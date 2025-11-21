@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
@@ -327,7 +328,7 @@ fun EOGApp() {
 
             // Live EOG text
             Text(
-                text = if (eogValues.isNotEmpty()) "EOG (µV): ${eogValues.last()}" else "Waiting for connection...",
+                text = if (eogValues.isNotEmpty()) "EOG Amplitude: ${eogValues.last()}" else "Waiting for connection...",
                 modifier = Modifier.padding(8.dp)
             )
 
@@ -337,9 +338,9 @@ fun EOGApp() {
                 tick = graphTick.value,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(200.dp)
+                    .height(260.dp)
                     .padding(2.dp),
-                yLabel = "EOG (µV)",
+                yLabel = "EOG (a.u.)",
                 isConnected = isConnected.value
             )
         }
@@ -351,7 +352,7 @@ fun LabeledGraph(
     values: List<Float>,
     tick: Int,
     modifier: Modifier = Modifier,
-    yLabel: String = "EOG (µV)",
+    yLabel: String = "EOG (a.u.)",
     isConnected: Boolean = false
 ) {
     Row(
@@ -361,15 +362,13 @@ fun LabeledGraph(
             // Y-Axis Label
             Box(
                 modifier = Modifier
-                    .padding(2.dp)
+                    .width(60.dp)
                     .fillMaxHeight(),
+                contentAlignment = Alignment.Center
             ) {
                 Text(
                     text = yLabel,
-                    modifier = Modifier
-                        .padding(2.dp)
-                        .align(Alignment.Center)
-                        .graphicsLayer(rotationZ = -90f),
+                    modifier = Modifier.graphicsLayer(rotationZ = -90f),
                     fontSize = 12.sp,
                     maxLines = 1
                 )
