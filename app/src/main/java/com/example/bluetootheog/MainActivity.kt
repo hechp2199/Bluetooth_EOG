@@ -72,7 +72,7 @@ class MainActivity : ComponentActivity() {
 
     // Variable declaration
     private var inputStream: InputStream? = null
-    var onDataReceived: ((Float) -> Unit)? = null
+    var onDataReceived: ((Float, Float) -> Unit)? = null
     var onConnectionChanged: ((Boolean) -> Unit)? = null
     private var isReading = false
     private val REQUEST_BLUETOOTH_PERMISSIONS = 1
@@ -221,22 +221,23 @@ class MainActivity : ComponentActivity() {
         isReading = true
 
         thread {
-            val buffer = ByteArray(1024)
-            var raw = ""
+            val reader = inputStream?.bufferedReader()
 
             while (isReading) {
                 try {
-                    val bytes = inputStream!!.read(buffer)
-                    raw += String(buffer, 0, bytes)
+                    val line = reader?.readLine() ?: break
 
-                    val lines = raw.split("\n")
-                    raw = lines.last()
+                    val parts = line.trim().split(",")
 
-                    for (line in lines.dropLast(1)) {
-                        line.trim().toFloatOrNull()?.let { value ->
-                            onDataReceived?.invoke(value)
+                    if (parts.size == 2) {
+                        val hVal = parts[0].toFloatOrNull()
+                        val vVal = parts[1].toFloatOrNull()
+
+                        if (hVal != null && vVal != null) {
+                            onDataReceived?.invoke(hVal, vVal)
                         }
                     }
+
                 } catch (e: Exception) {
                     Log.e("BluetoothEOG", "Read error: ${e.message}")
                     isReading = false
@@ -257,7 +258,8 @@ fun EOGApp() {
 
     val context = LocalContext.current
     val activity = context as? MainActivity
-    val eogValues = remember { mutableStateListOf<Float>() }
+    val hEogValues = remember { mutableStateListOf<Float>() }
+    val vEogValues = remember { mutableStateListOf<Float>() }
     val isConnected = remember { mutableStateOf(false) }
 
     val graphTick = remember { mutableStateOf(0) }
@@ -271,11 +273,15 @@ fun EOGApp() {
     }
 
 
-// assign callback to collect data
-    activity?.onDataReceived = { value ->
-        eogValues.add(value)
-        if (eogValues.size > 300) { // keep last ~3 seconds @100Hz
-            eogValues.removeAt(0)
+// Assigning callback to collect data
+    activity?.onDataReceived = { h, v ->
+
+        hEogValues.add(h)
+        vEogValues.add(v)
+
+        if (hEogValues.size > 400) {   // ~3 sec at 128Hz
+            hEogValues.removeAt(0)
+            vEogValues.removeAt(0)
         }
     }
 
@@ -328,19 +334,34 @@ fun EOGApp() {
 
             // Live EOG text
             Text(
-                text = if (eogValues.isNotEmpty()) "EOG Amplitude: ${eogValues.last()}" else "Waiting for connection...",
+                text = if (hEogValues.isNotEmpty() && vEogValues.isNotEmpty()) {
+                    "H: ${hEogValues.last().toInt()}   V: ${vEogValues.last().toInt()}"
+                } else {
+                    "Waiting for connection..."
+                },
                 modifier = Modifier.padding(8.dp)
             )
 
             // Live Graph
+            Text("Horizontal Channel")
             LabeledGraph(
-                values = eogValues,
+                values = hEogValues,
                 tick = graphTick.value,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(260.dp)
-                    .padding(2.dp),
-                yLabel = "EOG (a.u.)",
+                    .height(200.dp),
+                yLabel = "H (a.u.)",
+                isConnected = isConnected.value
+            )
+
+            Text("Vertical Channel")
+            LabeledGraph(
+                values = vEogValues,
+                tick = graphTick.value,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(200.dp),
+                yLabel = "V (a.u.)",
                 isConnected = isConnected.value
             )
         }
