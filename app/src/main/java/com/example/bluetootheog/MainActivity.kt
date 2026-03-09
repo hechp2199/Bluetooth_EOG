@@ -35,7 +35,6 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults.topAppBarColors
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -54,6 +53,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import com.example.bluetootheog.model.CircularBuffer
 import com.example.bluetootheog.ui.theme.BluetoothEOGTheme
 import kotlinx.coroutines.delay
 import java.io.InputStream
@@ -264,8 +264,10 @@ fun EOGApp() {
 
     val context = LocalContext.current
     val activity = context as? MainActivity
-    val hEogValues = remember { mutableStateListOf<Float>() }
-    val vEogValues = remember { mutableStateListOf<Float>() }
+    val hBuffer = remember { CircularBuffer(400) }
+    val vBuffer = remember { CircularBuffer(400) }
+    val hValues = remember { mutableStateOf(listOf<Float>()) }
+    val vValues = remember { mutableStateOf(listOf<Float>()) }
     val isConnected = remember { mutableStateOf(false) }
 
     val graphTick = remember { mutableStateOf(0) }
@@ -283,13 +285,11 @@ fun EOGApp() {
     LaunchedEffect(activity) {
         activity?.onDataReceived = { h, v ->
 
-            hEogValues.add(h)
-            vEogValues.add(v)
+            hBuffer.add(h)
+            vBuffer.add(v)
 
-            if (hEogValues.size > 400) {   // ~3 sec at 128Hz
-                hEogValues.removeAt(0)
-                vEogValues.removeAt(0)
-            }
+            hValues.value = hBuffer.toList()
+            vValues.value = vBuffer.toList()
         }
 
         // Observe connection status
@@ -342,8 +342,8 @@ fun EOGApp() {
 
             // Live EOG text
             Text(
-                text = if (hEogValues.isNotEmpty() && vEogValues.isNotEmpty()) {
-                    "H: ${hEogValues.last().toInt()}   V: ${vEogValues.last().toInt()}"
+                text = if (hValues.value.isNotEmpty() && vValues.value.isNotEmpty()) {
+                    "H: ${hValues.value.last().toInt()}   V: ${vValues.value.last().toInt()}"
                 } else {
                     "Waiting for connection..."
                 }, modifier = Modifier.padding(8.dp)
@@ -352,7 +352,7 @@ fun EOGApp() {
             // Live Graph
             Text("Horizontal Channel")
             LabeledGraph(
-                values = hEogValues,
+                values = hValues.value,
                 tick = graphTick.value,
                 modifier = Modifier
                     .fillMaxWidth()
@@ -363,7 +363,7 @@ fun EOGApp() {
 
             Text("Vertical Channel")
             LabeledGraph(
-                values = vEogValues,
+                values = vValues.value,
                 tick = graphTick.value,
                 modifier = Modifier
                     .fillMaxWidth()
