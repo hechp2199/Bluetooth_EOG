@@ -42,6 +42,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.platform.LocalContext
@@ -411,7 +414,8 @@ fun LabeledGraph(
 @Composable
 fun EOGGraph(values: List<Float>, tick: Int, modifier: Modifier = Modifier) {
 
-    val safeValues = values.toList() // Taking fresh snapshot of EOG values
+    val safeValues = values.toList()
+    val path = remember { Path() }
 
     Canvas(
         modifier = modifier
@@ -431,9 +435,9 @@ fun EOGGraph(values: List<Float>, tick: Int, modifier: Modifier = Modifier) {
 
         val xStep = w / (safeValues.size - 1)
 
-        // Adding grid lines to the graph
+        // Grid lines
         val gridColor = Color(0xFFCCCCCC)
-        val textColor = Color.White
+
         val labelPaint = android.graphics.Paint().apply {
             color = android.graphics.Color.WHITE
             textSize = 32f
@@ -443,14 +447,20 @@ fun EOGGraph(values: List<Float>, tick: Int, modifier: Modifier = Modifier) {
         val rows = 5
         for (i in 0..rows) {
             val y = h * i / rows
+
             drawLine(
-                start = Offset(0f, y), end = Offset(w, y), color = gridColor, strokeWidth = 1f
+                start = Offset(0f, y),
+                end = Offset(w, y),
+                color = gridColor,
+                strokeWidth = 1f
             )
 
-            // Y-axis labels
             val value = maxVal - (range / rows) * i
             drawContext.canvas.nativeCanvas.drawText(
-                String.format("%.0f", (value / 10).roundToInt() * 10f), 10f, y - 5f, labelPaint
+                String.format("%.0f", (value / 10).roundToInt() * 10f),
+                10f,
+                y - 5f,
+                labelPaint
             )
         }
 
@@ -459,28 +469,33 @@ fun EOGGraph(values: List<Float>, tick: Int, modifier: Modifier = Modifier) {
         for (i in 0..cols) {
             val x = w * i / cols
             drawLine(
-                start = Offset(x, 0f), end = Offset(x, h), color = gridColor, strokeWidth = 1f
+                start = Offset(x, 0f),
+                end = Offset(x, h),
+                color = gridColor,
+                strokeWidth = 1f
             )
         }
 
-        // Drawing the signal line
-        var prevX = 0f
-        var prevY = h - ((safeValues[0] - minVal) / range) * h
+        // Build waveform path
+        path.reset()
+
+        val firstY = h - ((safeValues[0] - minVal) / range) * h
+        path.moveTo(0f, firstY)
 
         for (i in 1 until safeValues.size) {
             val x = i * xStep
             val y = h - ((safeValues[i] - minVal) / range) * h
-
-            drawLine(
-                color = Color.Green,
-                start = Offset(prevX, prevY),
-                end = Offset(x, y),
-                strokeWidth = 3f
-            )
-
-            prevX = x
-            prevY = y
+            path.lineTo(x, y)
         }
+
+        drawPath(
+            path = path,
+            color = Color.Green,
+            style = Stroke(
+                width = 3f,
+                cap = StrokeCap.Round
+            )
+        )
     }
 }
 
