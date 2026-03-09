@@ -179,6 +179,7 @@ class MainActivity : ComponentActivity() {
                 }
 
                 bluetoothSocket = socket
+                isConnected = true
                 runOnUiThread {
                     Toast.makeText(this, "Connected to HC-05!", Toast.LENGTH_SHORT).show()
                     onConnectionChanged?.invoke(true)
@@ -234,7 +235,9 @@ class MainActivity : ComponentActivity() {
                         val vVal = parts[1].toFloatOrNull()
 
                         if (hVal != null && vVal != null) {
-                            onDataReceived?.invoke(hVal, vVal)
+                            runOnUiThread {
+                                onDataReceived?.invoke(hVal, vVal)
+                            }
                         }
                     }
 
@@ -274,20 +277,22 @@ fun EOGApp() {
 
 
 // Assigning callback to collect data
-    activity?.onDataReceived = { h, v ->
+    LaunchedEffect(activity) {
+        activity?.onDataReceived = { h, v ->
 
-        hEogValues.add(h)
-        vEogValues.add(v)
+            hEogValues.add(h)
+            vEogValues.add(v)
 
-        if (hEogValues.size > 400) {   // ~3 sec at 128Hz
-            hEogValues.removeAt(0)
-            vEogValues.removeAt(0)
+            if (hEogValues.size > 400) {   // ~3 sec at 128Hz
+                hEogValues.removeAt(0)
+                vEogValues.removeAt(0)
+            }
         }
-    }
 
-    // Observe connection status
-    activity?.onConnectionChanged = { connected ->
-        isConnected.value = connected
+        // Observe connection status
+        activity?.onConnectionChanged = { connected ->
+            isConnected.value = connected
+        }
     }
 
     Scaffold(topBar = {
@@ -338,8 +343,7 @@ fun EOGApp() {
                     "H: ${hEogValues.last().toInt()}   V: ${vEogValues.last().toInt()}"
                 } else {
                     "Waiting for connection..."
-                },
-                modifier = Modifier.padding(8.dp)
+                }, modifier = Modifier.padding(8.dp)
             )
 
             // Live Graph
@@ -398,9 +402,7 @@ fun LabeledGraph(
 
         // Graph
         EOGGraph(
-            values = values,
-            tick = tick,
-            modifier = Modifier.weight(1f)
+            values = values, tick = tick, modifier = Modifier.weight(1f)
         )
     }
 }
