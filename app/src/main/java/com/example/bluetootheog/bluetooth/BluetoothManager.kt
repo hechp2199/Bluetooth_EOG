@@ -183,6 +183,7 @@ class BluetoothManager(private val activity: Activity) {
                             activity.runOnUiThread {
                                 onDataReceived?.invoke(hVal, vVal)
                             }
+                            //onNewData(hVal, vVal)
                         }
                     }
 
