@@ -26,7 +26,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.example.bluetootheog.bluetooth.BluetoothManager
@@ -112,15 +111,17 @@ fun EOGApp(bluetoothManager: BluetoothManager, repository: EOGRepository) {
                         repository.startRecording()
                         isRecording.value = true
                     }
-                }, containerColor = if (!isConnected.value) Color.Gray      // Disabled look
-                else if (isRecording.value) Color.Red   // Recording
-                else MaterialTheme.colorScheme.primaryContainer  // Idle
+                },
+                containerColor = if (!isConnected.value) MaterialTheme.colorScheme.surfaceVariant // disabled
+                else if (isRecording.value) MaterialTheme.colorScheme.errorContainer // recording
+                else MaterialTheme.colorScheme.primaryContainer // idle
             ) {
                 Icon(
                     imageVector = if (isRecording.value) Icons.Filled.Stop
                     else Icons.Filled.FiberManualRecord,
                     contentDescription = "Record",
-                    tint = if (isRecording.value) Color.White else Color.Green
+                    tint = if (isRecording.value) MaterialTheme.colorScheme.error // recording
+                    else MaterialTheme.colorScheme.primary // idle
                 )
             }
             // Connect/ Disconnect FAB
