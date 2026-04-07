@@ -1,22 +1,28 @@
 package com.example.bluetootheog.ui
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FiberManualRecord
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.BottomAppBar
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults.topAppBarColors
@@ -30,8 +36,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.example.bluetootheog.bluetooth.BluetoothManager
 import com.example.bluetootheog.model.CircularBuffer
+import com.example.bluetootheog.model.EyeMovements
 import com.example.bluetootheog.repository.EOGRepository
 import com.example.bluetootheog.utils.CSVExporter
+import com.example.bluetootheog.utils.formatTime
 import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -44,6 +52,9 @@ fun EOGApp(bluetoothManager: BluetoothManager, repository: EOGRepository) {
     val vValues = remember { mutableStateOf(listOf<Float>()) }
     val isConnected = remember { mutableStateOf(false) }
     val isRecording = remember { mutableStateOf(false) }
+    val elapsedSeconds = remember { mutableStateOf(0) }
+    val selectedMovement = remember { mutableStateOf(EyeMovements.NONE) }
+    val dropdownExpanded = remember { mutableStateOf(false) }
     val context = androidx.compose.ui.platform.LocalContext.current
 
     val graphTick = remember { mutableStateOf(0) }
@@ -76,6 +87,17 @@ fun EOGApp(bluetoothManager: BluetoothManager, repository: EOGRepository) {
         }
     }
 
+    // LaunchedEffect that ticks every second while recording
+    LaunchedEffect(isRecording.value) {
+        if (isRecording.value) {
+            elapsedSeconds.value = 0  // Resets on every new recording
+            while (isRecording.value) {
+                delay(1000)
+                elapsedSeconds.value++
+            }
+        }
+    }
+
     Scaffold(topBar = {
         TopAppBar(
             colors = topAppBarColors(
@@ -99,30 +121,79 @@ fun EOGApp(bluetoothManager: BluetoothManager, repository: EOGRepository) {
         Column(
             horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            // Record FAB
-            SmallFloatingActionButton(
-                onClick = {
-                    if (!isConnected.value) return@SmallFloatingActionButton
+
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+
+                // Dropdown to show eye movement labels
+                Box {
+                    OutlinedButton(
+                        onClick = {
+                            if (isConnected.value && !isRecording.value) dropdownExpanded.value =
+                                true
+                        },
+                        enabled = isConnected.value && !isRecording.value,
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            containerColor = MaterialTheme.colorScheme.surface
+                        )
+                    ) {
+                        Text(
+                            text = selectedMovement.value.label,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                        Icon(
+                            Icons.Filled.ArrowDropDown, contentDescription = "Select movement"
+                        )
+                    }
+
+                    DropdownMenu(
+                        expanded = dropdownExpanded.value,
+                        onDismissRequest = { dropdownExpanded.value = false }) {
+                        EyeMovements.entries.forEach { movement ->
+                            DropdownMenuItem(text = { Text(movement.label) }, onClick = {
+                                selectedMovement.value = movement
+                                dropdownExpanded.value = false
+                            })
+                        }
+                    }
+                }
+
+                // Stopwatch shown when recording
+                if (isRecording.value) {
+                    Text(
+                        text = formatTime(elapsedSeconds.value),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+
+                // Record button
+                ExtendedFloatingActionButton(
+                    onClick = {
+                        if (!isConnected.value) return@ExtendedFloatingActionButton
                     if (isRecording.value) {
                         val data = repository.stopRecording()
-                        CSVExporter.saveToCSV(context, data)
+                        CSVExporter.saveToCSV(context, data, selectedMovement.value.label)
                         isRecording.value = false
                     } else {
                         repository.startRecording()
                         isRecording.value = true
                     }
-                },
-                containerColor = if (!isConnected.value) MaterialTheme.colorScheme.surfaceVariant // disabled
-                else if (isRecording.value) MaterialTheme.colorScheme.errorContainer // recording
-                else MaterialTheme.colorScheme.primaryContainer // idle
-            ) {
-                Icon(
-                    imageVector = if (isRecording.value) Icons.Filled.Stop
-                    else Icons.Filled.FiberManualRecord,
-                    contentDescription = "Record",
-                    tint = if (isRecording.value) MaterialTheme.colorScheme.error // recording
-                    else MaterialTheme.colorScheme.primary // idle
-                )
+                    }, containerColor = when {
+                        !isConnected.value -> MaterialTheme.colorScheme.surfaceVariant  // disconnected
+                        isRecording.value -> MaterialTheme.colorScheme.errorContainer  // recording
+                        else -> MaterialTheme.colorScheme.primaryContainer // connected, ready
+                    }, icon = {
+                        Icon(
+                            imageVector = if (isRecording.value) Icons.Filled.Stop
+                            else Icons.Filled.FiberManualRecord,
+                            contentDescription = "Record",
+                            tint = if (isRecording.value) MaterialTheme.colorScheme.error // recording
+                            else MaterialTheme.colorScheme.primary // idle
+                        )
+                    }, text = { Text(if (isRecording.value) "Stop" else "Record") })
             }
             // Connect/ Disconnect FAB
             ExtendedFloatingActionButton(
