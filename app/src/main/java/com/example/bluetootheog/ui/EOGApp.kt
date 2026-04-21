@@ -70,7 +70,7 @@ fun EOGApp(bluetoothManager: BluetoothManager, repository: EOGRepository) {
 
     // Assigning callback to collect data
     LaunchedEffect(bluetoothManager) {
-        bluetoothManager.onDataReceived = { h, v ->
+        bluetoothManager.onDataReceived = { sampleIndex, h, v ->
 
             hBuffer.add(h)
             vBuffer.add(v)
@@ -78,7 +78,7 @@ fun EOGApp(bluetoothManager: BluetoothManager, repository: EOGRepository) {
             hValues.value = hBuffer.toList()
             vValues.value = vBuffer.toList()
 
-            repository.onNewData(h, v)
+            repository.onNewData(sampleIndex, h, v)
         }
 
         // Observe connection status

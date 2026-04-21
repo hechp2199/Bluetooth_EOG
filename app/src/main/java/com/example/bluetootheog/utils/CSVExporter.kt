@@ -26,7 +26,7 @@ object CSVExporter {
 
         file.bufferedWriter().use { writer ->
             // Headers
-            writer.write("timestamp_ms,h_signal,v_signal,label\n")
+            writer.write("sample_index,time_ms,h_signal,v_signal,label\n")
             // Data rows
             readings.forEachIndexed { index, reading ->
                 val rowLabel = when {
@@ -34,7 +34,7 @@ object CSVExporter {
                     label == EyeMovements.NONE.label -> "UNLABELED"  // First row, when no label selected
                     else -> label                                // First row, when label selected
                 }
-                writer.write("${reading.timestamp},${reading.h},${reading.v},$rowLabel\n")
+                writer.write("${reading.sampleIndex},${reading.timeMs},${reading.h},${reading.v},$rowLabel\n")
             }
         }
     }

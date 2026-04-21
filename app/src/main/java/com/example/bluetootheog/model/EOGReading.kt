@@ -1,7 +1,8 @@
 package com.example.bluetootheog.model
 
 data class EOGReading(
-    val timestamp: Long,    // System.currentTimeMillis()
+    val sampleIndex: Long,
+    val timeMs: Double,    // Time in milliseconds
     val h: Float,
     val v: Float
 )

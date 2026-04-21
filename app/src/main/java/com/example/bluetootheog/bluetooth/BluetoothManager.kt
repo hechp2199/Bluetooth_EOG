@@ -16,7 +16,7 @@ import kotlin.concurrent.thread
 class BluetoothManager(private val activity: Activity) {
 
     // Variable declaration
-    var onDataReceived: ((Float, Float) -> Unit)? = null
+    var onDataReceived: ((Long, Float, Float) -> Unit)? = null
     var onConnectionChanged: ((Boolean) -> Unit)? = null
     private val REQUEST_BLUETOOTH_PERMISSIONS = 1
     private var bluetoothAdapter: BluetoothAdapter? = null
@@ -175,13 +175,14 @@ class BluetoothManager(private val activity: Activity) {
 
                     val parts = line.trim().split(",")
 
-                    if (parts.size == 2) {
-                        val hVal = parts[0].toFloatOrNull()
-                        val vVal = parts[1].toFloatOrNull()
+                    if (parts.size == 3) {
+                        val sampleIndex = parts[0].toLongOrNull()
+                        val hVal = parts[1].toFloatOrNull()
+                        val vVal = parts[2].toFloatOrNull()
 
-                        if (hVal != null && vVal != null) {
+                        if (sampleIndex != null && hVal != null && vVal != null) {
                             activity.runOnUiThread {
-                                onDataReceived?.invoke(hVal, vVal)
+                                onDataReceived?.invoke(sampleIndex, hVal, vVal)
                             }
                         }
                     }
