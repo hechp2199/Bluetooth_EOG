@@ -1,6 +1,7 @@
 package com.example.bluetootheog.repository
 
 import com.example.bluetootheog.bluetooth.BluetoothManager
+import com.example.bluetootheog.ml.EOGPreprocessor
 import com.example.bluetootheog.model.EOGReading
 
 class EOGRepository(private val bluetoothManager: BluetoothManager) {
@@ -9,18 +10,37 @@ class EOGRepository(private val bluetoothManager: BluetoothManager) {
     var isRecording = false
         private set
 
+    // Inference state
+    var isInferring = false
+        private set
+
     private val recordingBuffer = mutableListOf<EOGReading>()
     private var firstSampleIndex: Long = -1
+    val preprocessor = EOGPreprocessor()
+    private var samplesSinceLastInference = 0
+    var onPredictionReady: ((FloatArray) -> Unit)? = null
 
+    // Recording start/stop handling
     fun startRecording() {
         recordingBuffer.clear()
         firstSampleIndex = -1
         isRecording = true
     }
-
     fun stopRecording(): List<EOGReading> {
         isRecording = false
         return recordingBuffer.toList()  // Return a copy
+    }
+
+    // Inference start/stop handling
+    fun startInferring() {
+        samplesSinceLastInference = 0
+        preprocessor.reset()
+        isInferring = true
+    }
+
+    fun stopInferring() {
+        isInferring = false
+        preprocessor.reset()
     }
 
     companion object {
@@ -28,6 +48,23 @@ class EOGRepository(private val bluetoothManager: BluetoothManager) {
     }
 
     fun onNewData(sampleIndex: Long, h: Float, v: Float) {
+
+        // ── Inference mode ─────────────────────────────────────────────────
+        if (isInferring) {
+            preprocessor.addSample(h, v)
+            samplesSinceLastInference++
+
+            if (preprocessor.isReady() && samplesSinceLastInference >= 128) {
+                samplesSinceLastInference = 0
+                onPredictionReady?.invoke(
+                    preprocessor.getProcessedWindow(
+                        EOGPreprocessor.NormalizationMode.PER_BUFFER
+                    )
+                )
+            }
+        }
+
+        // ── Recording mode ─────────────────────────────────────────────────
         if (isRecording) {
             // Capturing first sample index when recording starts
             if (firstSampleIndex == -1L) {

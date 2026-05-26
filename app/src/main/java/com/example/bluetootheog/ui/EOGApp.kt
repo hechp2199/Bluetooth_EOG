@@ -13,6 +13,7 @@ import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FiberManualRecord
 import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.BottomAppBar
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
@@ -52,10 +53,12 @@ fun EOGApp(bluetoothManager: BluetoothManager, repository: EOGRepository) {
     val vValues = remember { mutableStateOf(listOf<Float>()) }
     val isConnected = remember { mutableStateOf(false) }
     val isRecording = remember { mutableStateOf(false) }
+    val isInferring = remember { mutableStateOf(false) }
     val elapsedSeconds = remember { mutableStateOf(0) }
     val selectedMovement = remember { mutableStateOf(EyeMovements.NONE) }
     val dropdownExpanded = remember { mutableStateOf(false) }
     val context = androidx.compose.ui.platform.LocalContext.current
+    val predictionLabel = remember { mutableStateOf("") }
 
     val graphTick = remember { mutableStateOf(0) }
 
@@ -71,19 +74,23 @@ fun EOGApp(bluetoothManager: BluetoothManager, repository: EOGRepository) {
     // Assigning callback to collect data
     LaunchedEffect(bluetoothManager) {
         bluetoothManager.onDataReceived = { sampleIndex, h, v ->
-
             hBuffer.add(h)
             vBuffer.add(v)
-
             hValues.value = hBuffer.toList()
             vValues.value = vBuffer.toList()
-
             repository.onNewData(sampleIndex, h, v)
         }
 
         // Observe connection status
         bluetoothManager.onConnectionChanged = { connected ->
             isConnected.value = connected
+        }
+
+        // Observe prediction status
+        repository.onPredictionReady = { windowData ->
+            // EyeMovementClassifier will go here later
+            // For now just show raw output
+            predictionLabel.value = "Predicting..."
         }
     }
 
@@ -131,10 +138,10 @@ fun EOGApp(bluetoothManager: BluetoothManager, repository: EOGRepository) {
                 Box {
                     OutlinedButton(
                         onClick = {
-                            if (isConnected.value && !isRecording.value) dropdownExpanded.value =
+                            if (isConnected.value && !isRecording.value && !isInferring.value) dropdownExpanded.value =
                                 true
                         },
-                        enabled = isConnected.value && !isRecording.value,
+                        enabled = isConnected.value && !isRecording.value && !isInferring.value,
                         colors = ButtonDefaults.outlinedButtonColors(
                             containerColor = MaterialTheme.colorScheme.surface
                         )
@@ -160,7 +167,34 @@ fun EOGApp(bluetoothManager: BluetoothManager, repository: EOGRepository) {
                     }
                 }
 
-                // Stopwatch shown when recording
+                // Inference FAB — left side
+                ExtendedFloatingActionButton(
+                    onClick = {
+                        if (!isConnected.value) return@ExtendedFloatingActionButton
+                        if (isRecording.value) return@ExtendedFloatingActionButton
+                        if (isInferring.value) {
+                            repository.stopInferring()
+                            predictionLabel.value = ""
+                            isInferring.value = false
+                        } else {
+                            repository.startInferring()
+                            isInferring.value = true
+                        }
+                    }, containerColor = when {
+                        !isConnected.value -> MaterialTheme.colorScheme.surfaceVariant
+                        isRecording.value -> MaterialTheme.colorScheme.surfaceVariant
+                        isInferring.value -> MaterialTheme.colorScheme.tertiaryContainer
+                        else -> MaterialTheme.colorScheme.primaryContainer
+                    }, icon = {
+                        Icon(
+                            imageVector = Icons.Filled.Visibility,
+                            contentDescription = "Inference",
+                            tint = if (isInferring.value) MaterialTheme.colorScheme.tertiary
+                            else MaterialTheme.colorScheme.primary
+                        )
+                    }, text = { Text(if (isInferring.value) "Stop" else "Infer") })
+
+                // Stopwatch shown in middle when recording
                 if (isRecording.value) {
                     Text(
                         text = formatTime(elapsedSeconds.value),
@@ -169,10 +203,20 @@ fun EOGApp(bluetoothManager: BluetoothManager, repository: EOGRepository) {
                     )
                 }
 
+                // Prediction label in middle, only when inferring
+                if (isInferring.value && predictionLabel.value.isNotEmpty()) {
+                    Text(
+                        text = predictionLabel.value,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.tertiary
+                    )
+                }
+
                 // Record button
                 ExtendedFloatingActionButton(
                     onClick = {
                         if (!isConnected.value) return@ExtendedFloatingActionButton
+                        if (isInferring.value) return@ExtendedFloatingActionButton
                     if (isRecording.value) {
                         val data = repository.stopRecording()
                         CSVExporter.saveToCSV(context, data, selectedMovement.value.label)
@@ -183,6 +227,7 @@ fun EOGApp(bluetoothManager: BluetoothManager, repository: EOGRepository) {
                     }
                     }, containerColor = when {
                         !isConnected.value -> MaterialTheme.colorScheme.surfaceVariant  // disconnected
+                        isInferring.value -> MaterialTheme.colorScheme.surfaceVariant
                         isRecording.value -> MaterialTheme.colorScheme.errorContainer  // recording
                         else -> MaterialTheme.colorScheme.primaryContainer // connected, ready
                     }, icon = {
