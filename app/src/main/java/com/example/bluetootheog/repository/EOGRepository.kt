@@ -2,9 +2,13 @@ package com.example.bluetootheog.repository
 
 import com.example.bluetootheog.bluetooth.BluetoothManager
 import com.example.bluetootheog.ml.EOGPreprocessor
+import com.example.bluetootheog.ml.EyeMovementClassifier
+import com.example.bluetootheog.ml.ModelConfig
 import com.example.bluetootheog.model.EOGReading
 
-class EOGRepository(private val bluetoothManager: BluetoothManager) {
+class EOGRepository(
+    private val bluetoothManager: BluetoothManager, private val classifier: EyeMovementClassifier
+) {
 
     // Recording state
     var isRecording = false
@@ -18,7 +22,7 @@ class EOGRepository(private val bluetoothManager: BluetoothManager) {
     private var firstSampleIndex: Long = -1
     val preprocessor = EOGPreprocessor()
     private var samplesSinceLastInference = 0
-    var onPredictionReady: ((FloatArray) -> Unit)? = null
+    var onPredictionReady: ((String) -> Unit)? = null
 
     // Recording start/stop handling
     fun startRecording() {
@@ -37,7 +41,6 @@ class EOGRepository(private val bluetoothManager: BluetoothManager) {
         preprocessor.reset()
         isInferring = true
     }
-
     fun stopInferring() {
         isInferring = false
         preprocessor.reset()
@@ -56,11 +59,19 @@ class EOGRepository(private val bluetoothManager: BluetoothManager) {
 
             if (preprocessor.isReady() && samplesSinceLastInference >= 128) {
                 samplesSinceLastInference = 0
-                onPredictionReady?.invoke(
-                    preprocessor.getProcessedWindow(
-                        EOGPreprocessor.NormalizationMode.PER_BUFFER
-                    )
+
+                // Get preprocessed window
+                val windowData = preprocessor.getProcessedWindow(
+                    EOGPreprocessor.NormalizationMode.PER_BUFFER
                 )
+
+                // Run inference
+                val (predictedClass, confidence) = classifier.predict(windowData)
+
+                // Notify UI only if confidence is above threshold
+                if (confidence > 0.7f && predictedClass >= 0) {
+                    onPredictionReady?.invoke(ModelConfig.CLASS_NAMES[predictedClass])
+                }
             }
         }
 
@@ -77,10 +88,7 @@ class EOGRepository(private val bluetoothManager: BluetoothManager) {
 
             recordingBuffer.add(
                 EOGReading(
-                    sampleIndex = relativeSampleIndex,
-                    timeMs = timeMs,
-                    h = h,
-                    v = v
+                    sampleIndex = relativeSampleIndex, timeMs = timeMs, h = h, v = v
                 )
             )
         }

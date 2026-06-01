@@ -2,11 +2,11 @@ package com.example.bluetootheog.ml
 
 class EOGPreprocessor {
 
-    // ── Rolling buffer — holds last 768 samples per channel (3 windows per channel) ──────────────
+    // ── Rolling buffer — holds last 768 samples per channel (3 windows per channel) ──
     private val hBuffer = ArrayDeque<Float>(ModelConfig.BUFFER_SAMPLES)
     private val vBuffer = ArrayDeque<Float>(ModelConfig.BUFFER_SAMPLES)
 
-    // ── Normalization mode ────────────────────────────────────────────────
+    // ── Normalization mode ────────────────────────────────────────────────`
     enum class NormalizationMode {
         PER_WINDOW,   // normalize using stats from the 256-sample window only
         PER_BUFFER    // normalize using stats from all 768 samples in buffer

@@ -87,10 +87,8 @@ fun EOGApp(bluetoothManager: BluetoothManager, repository: EOGRepository) {
         }
 
         // Observe prediction status
-        repository.onPredictionReady = { windowData ->
-            // EyeMovementClassifier will go here later
-            // For now just show raw output
-            predictionLabel.value = "Predicting..."
+        repository.onPredictionReady = { classLabel ->
+            predictionLabel.value = classLabel
         }
     }
 
@@ -121,13 +119,54 @@ fun EOGApp(bluetoothManager: BluetoothManager, repository: EOGRepository) {
             Text(
                 modifier = Modifier.fillMaxWidth(),
                 textAlign = TextAlign.Center,
-                text = "Neural Engineering Lab | IITG",
+                text = "Neural Engineering Lab | IIT Guwahati",
             )
         }
     }, floatingActionButton = {
         Column(
             horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+
+                // Prediction label shown, only when inferring
+                if (isInferring.value && predictionLabel.value.isNotEmpty()) {
+                    Text(
+                        text = predictionLabel.value,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.tertiary
+                    )
+                }
+
+                // Inference FAB
+                ExtendedFloatingActionButton(
+                    onClick = {
+                        if (!isConnected.value) return@ExtendedFloatingActionButton
+                        if (isRecording.value) return@ExtendedFloatingActionButton
+                        if (isInferring.value) {
+                            repository.stopInferring()
+                            predictionLabel.value = ""
+                            isInferring.value = false
+                        } else {
+                            repository.startInferring()
+                            isInferring.value = true
+                        }
+                    }, containerColor = when {
+                        !isConnected.value -> MaterialTheme.colorScheme.surfaceVariant
+                        isRecording.value -> MaterialTheme.colorScheme.surfaceVariant
+                        isInferring.value -> MaterialTheme.colorScheme.errorContainer
+                        else -> MaterialTheme.colorScheme.primaryContainer
+                    }, icon = {
+                        Icon(
+                            imageVector = Icons.Filled.Visibility,
+                            contentDescription = "Inference",
+                            tint = if (isInferring.value) MaterialTheme.colorScheme.error
+                            else MaterialTheme.colorScheme.primary
+                        )
+                    }, text = { Text(if (isInferring.value) "Stop" else "Infer") })
+            }
 
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -167,48 +206,12 @@ fun EOGApp(bluetoothManager: BluetoothManager, repository: EOGRepository) {
                     }
                 }
 
-                // Inference FAB — left side
-                ExtendedFloatingActionButton(
-                    onClick = {
-                        if (!isConnected.value) return@ExtendedFloatingActionButton
-                        if (isRecording.value) return@ExtendedFloatingActionButton
-                        if (isInferring.value) {
-                            repository.stopInferring()
-                            predictionLabel.value = ""
-                            isInferring.value = false
-                        } else {
-                            repository.startInferring()
-                            isInferring.value = true
-                        }
-                    }, containerColor = when {
-                        !isConnected.value -> MaterialTheme.colorScheme.surfaceVariant
-                        isRecording.value -> MaterialTheme.colorScheme.surfaceVariant
-                        isInferring.value -> MaterialTheme.colorScheme.tertiaryContainer
-                        else -> MaterialTheme.colorScheme.primaryContainer
-                    }, icon = {
-                        Icon(
-                            imageVector = Icons.Filled.Visibility,
-                            contentDescription = "Inference",
-                            tint = if (isInferring.value) MaterialTheme.colorScheme.tertiary
-                            else MaterialTheme.colorScheme.primary
-                        )
-                    }, text = { Text(if (isInferring.value) "Stop" else "Infer") })
-
                 // Stopwatch shown in middle when recording
                 if (isRecording.value) {
                     Text(
                         text = formatTime(elapsedSeconds.value),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.error
-                    )
-                }
-
-                // Prediction label in middle, only when inferring
-                if (isInferring.value && predictionLabel.value.isNotEmpty()) {
-                    Text(
-                        text = predictionLabel.value,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.tertiary
                     )
                 }
 
