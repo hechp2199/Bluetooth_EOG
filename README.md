@@ -41,3 +41,41 @@ Android Application
 └─────────────────────────────┘
       ↓
 Eye Movement Prediction
+```
+
+## Application Architecture
+MainActivity
+    │
+    ├── BluetoothManager
+    │       └── Bluetooth communication
+    │
+    ├── EOGRepository
+    │       ├── Data buffering
+    │       ├── Recording
+    │       └── Inference coordination
+    │
+    ├── EOGPreprocessor
+    │       └── Signal preprocessing
+    │
+    ├── EyeMovementClassifier
+    │       └── TensorFlow Lite inference
+    │
+    └── EOGApp
+            ├── Signal visualization
+            ├── Recording controls
+            └── Classification interface
+
+## Research Context
+
+This application was developed as part of an M.Tech project at the Neural Engineering Lab, Department of Biosciences and Bioengineering, IIT Guwahati.
+
+The complete system integrates:
+- EOG signal acquisition
+- Wireless communication
+- Mobile signal visualization
+- EOG data recording
+- Signal preprocessing
+- Lightweight deep learning
+- On-device inference
+
+The platform is intended as a research prototype for portable EOG-based human-computer interaction and assistive technology applications.
