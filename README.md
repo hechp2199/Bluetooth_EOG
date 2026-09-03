@@ -44,6 +44,7 @@ Eye Movement Prediction
 ```
 
 ## Application Architecture
+```text
 MainActivity
     │
     ├── BluetoothManager
@@ -64,6 +65,7 @@ MainActivity
             ├── Signal visualization
             ├── Recording controls
             └── Classification interface
+```
 
 ## Research Context
 
